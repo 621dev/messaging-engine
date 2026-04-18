@@ -9,7 +9,6 @@ pipeline {
     environment {
         JAR_NAME = 'messaging-engine-0.0.1-SNAPSHOT.jar'
         DEPLOY_PATH = '/opt/messaging/engine.jar'
-        REDIS_HOST = '192.168.0.136'
     }
 
     stages {
@@ -30,9 +29,9 @@ pipeline {
                 sshagent(['deploy-key']) {
                     script {
                         def servers = [
-                            'user@192.168.0.121',
-                            'user@192.168.0.233',
-                            'user@192.168.0.103'
+                            'root@192.168.0.121',
+                            'root@192.168.0.233',
+                            // 'root@192.168.0.103'  // 추후 활성화
                         ]
                         servers.each { server ->
                             sh """
