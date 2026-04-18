@@ -6,8 +6,6 @@ pipeline {
     }
 
     environment {
-        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-17.0.18.0.8-1.el8.x86_64'
-        PATH = "/usr/lib/jvm/java-17-openjdk-17.0.18.0.8-1.el8.x86_64/bin:${env.PATH}"
         JAR_NAME = 'messaging-engine-0.0.1-SNAPSHOT.jar'
         DEPLOY_PATH = '/opt/messaging/engine.jar'
     }
@@ -21,13 +19,7 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh '''
-                    chmod +x ./mvnw
-                    export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-17.0.18.0.8-1.el8.x86_64
-                    export PATH=$JAVA_HOME/bin:$PATH
-                    java -version
-                    ./mvnw clean package -DskipTests
-                '''
+                sh 'chmod +x ./mvnw && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-17.0.18.0.8-1.el8.x86_64 PATH=$JAVA_HOME/bin:$PATH ./mvnw clean package -DskipTests'
             }
         }
 
