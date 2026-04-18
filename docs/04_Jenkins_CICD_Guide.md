@@ -240,14 +240,32 @@ Jenkins 파이프라인 설정에서:
 
 각 Spring Boot 서버(#1~#3)에서 아래 작업을 해둔다.
 
-### 6-1. 배포 디렉토리 생성
+### 6-1. 배포 디렉토리 및 유저 생성
 
 ```bash
+# 전용 유저 생성
+sudo useradd -r -s /sbin/nologin messaging
+
+# 배포 디렉토리 생성 및 권한 설정
 sudo mkdir -p /opt/messaging
-sudo chown user:user /opt/messaging
+sudo chown -R messaging:messaging /opt/messaging
 ```
 
-### 6-2. systemd 서비스 등록
+### 6-2. 서버 전용 application.properties 작성
+
+JAR 옆에 `application.properties`를 두면 Spring Boot가 자동으로 읽는다.
+`WorkingDirectory`를 `/opt/messaging`으로 지정하면 별도 인자 없이 적용된다.
+
+```bash
+sudo vi /opt/messaging/application.properties
+```
+
+```properties
+server.port=8080
+spring.data.redis.cluster.nodes=192.168.0.136:6379,192.168.0.45:6379
+```
+
+### 6-3. systemd 서비스 등록
 
 ```bash
 sudo vi /etc/systemd/system/messaging-engine.service
@@ -259,11 +277,13 @@ Description=Messaging Engine
 After=network.target
 
 [Service]
-User=user
-ExecStart=/usr/bin/java -jar /opt/messaging/engine.jar \
-  --spring.data.redis.host=192.168.0.136 \
-  --spring.data.redis.port=6379
-Restart=always
+Type=simple
+User=messaging
+Group=messaging
+WorkingDirectory=/opt/messaging
+Environment="JAVA_OPTS=-Xms512m -Xmx1g -XX:+UseG1GC"
+ExecStart=/usr/bin/java ${JAVA_OPTS} -jar /opt/messaging/engine.jar
+Restart=on-failure
 RestartSec=5
 
 [Install]
