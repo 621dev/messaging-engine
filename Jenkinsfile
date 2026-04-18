@@ -2,11 +2,12 @@ pipeline {
     agent any
 
     tools {
-        jdk 'JDK21'
         maven 'Maven3'
     }
 
     environment {
+        JAVA_HOME = '/usr/lib/jvm/java-21-openjdk-21.0.10.0.7-1.el8.x86_64'
+        PATH = "${JAVA_HOME}/bin:${env.PATH}"
         JAR_NAME = 'messaging-engine-0.0.1-SNAPSHOT.jar'
         DEPLOY_PATH = '/opt/messaging/engine.jar'
     }
