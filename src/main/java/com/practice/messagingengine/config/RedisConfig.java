@@ -11,6 +11,7 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.lang.NonNull;
 
 @Configuration
 public class RedisConfig {
@@ -18,15 +19,15 @@ public class RedisConfig {
     @Profile("local")
     @Bean
     public RedisConnectionFactory localRedisConnectionFactory(
-            @Value("${spring.data.redis.host:localhost}") String host,
+            @Value("${spring.data.redis.host:192.168.0.136}") @NonNull String host,
             @Value("${spring.data.redis.port:6379}") int port) {
         return new LettuceConnectionFactory(new RedisStandaloneConfiguration(host, port));
     }
 
-    @Profile("!local")
+    @Profile("dev")
     @Bean
     public RedisConnectionFactory clusterRedisConnectionFactory(
-            @Value("${spring.data.redis.cluster.nodes}") List<String> clusterNodes) {
+            @Value("${spring.data.redis.cluster.nodes}") @NonNull List<String> clusterNodes) {
         return new LettuceConnectionFactory(new RedisClusterConfiguration(clusterNodes));
     }
 
