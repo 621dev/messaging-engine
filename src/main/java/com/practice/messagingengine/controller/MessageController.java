@@ -48,6 +48,7 @@ public class MessageController {
         return ResponseEntity.ok(Map.of(
                 "queueSize", messageService.queueSize(),
                 "recentMessages", recent,
-                "serverInfo", System.getenv().getOrDefault("HOSTNAME", "unknown")));
+                "serverInfo",
+                System.getenv().getOrDefault("HOSTNAME", System.getenv().getOrDefault("COMPUTERNAME", "unknown"))));
     }
 }
