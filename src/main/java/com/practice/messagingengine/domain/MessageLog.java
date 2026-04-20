@@ -26,13 +26,14 @@ public class MessageLog {
     private String receiver;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "message_type")
+    @Column(name = "message_type", columnDefinition = "ENUM('SMS','LMS','KAKAO','EMAIL')")
     private MessageType messageType;
 
     @Column(columnDefinition = "TEXT")
     private String content;
 
     @Enumerated(EnumType.STRING)
+    @Column(columnDefinition = "ENUM('PENDING','SUCCESS','FAILED')")
     private MessageStatus status;
 
     @Column(name = "sent_at")

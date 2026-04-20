@@ -1,5 +1,7 @@
 package com.practice.messagingengine.controller;
 
+import com.practice.messagingengine.domain.MessageLog;
+import com.practice.messagingengine.dto.MessageRequest;
 import com.practice.messagingengine.service.MessageService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,27 +20,27 @@ public class MessageController {
     }
 
     @PostMapping
-    public ResponseEntity<Map<String, Object>> send(@RequestBody Map<String, String> body) {
-        String content = body.get("content");
-        if (content == null || content.isBlank()) {
+    public ResponseEntity<Map<String, Object>> send(@RequestBody MessageRequest request) {
+        if (request.getContent() == null || request.getContent().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "content is required"));
         }
-        messageService.send(content);
+        String messageId = messageService.send(request);
         return ResponseEntity.ok(Map.of(
                 "status", "queued",
-                "content", content,
+                "messageId", messageId,
                 "queueSize", messageService.queueSize()));
     }
 
     @DeleteMapping("/consume")
     public ResponseEntity<Map<String, Object>> consume() {
-        String message = messageService.consume();
-        if (message == null) {
+        MessageLog log = messageService.consume();
+        if (log == null) {
             return ResponseEntity.ok(Map.of("status", "empty", "message", "queue is empty"));
         }
         return ResponseEntity.ok(Map.of(
                 "status", "consumed",
-                "message", message,
+                "messageId", log.getMessageId(),
+                "content", log.getContent() != null ? log.getContent() : "",
                 "remainingSize", messageService.queueSize()));
     }
 
@@ -47,7 +49,7 @@ public class MessageController {
         List<String> recent = messageService.peek(5);
         return ResponseEntity.ok(Map.of(
                 "queueSize", messageService.queueSize(),
-                "recentMessages", recent,
+                "recentMessageIds", recent,
                 "serverInfo",
                 System.getenv().getOrDefault("HOSTNAME", System.getenv().getOrDefault("COMPUTERNAME", "unknown"))));
     }
