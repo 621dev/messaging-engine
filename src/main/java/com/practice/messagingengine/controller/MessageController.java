@@ -3,6 +3,7 @@ package com.practice.messagingengine.controller;
 import com.practice.messagingengine.domain.MessageLog;
 import com.practice.messagingengine.dto.MessageRequest;
 import com.practice.messagingengine.service.MessageService;
+import com.practice.messagingengine.worker.MessageWorker;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,9 +15,11 @@ import java.util.Map;
 public class MessageController {
 
     private final MessageService messageService;
+    private final MessageWorker messageWorker;
 
-    public MessageController(MessageService messageService) {
+    public MessageController(MessageService messageService, MessageWorker messageWorker) {
         this.messageService = messageService;
+        this.messageWorker = messageWorker;
     }
 
     @PostMapping
@@ -41,11 +44,26 @@ public class MessageController {
         return ResponseEntity.ok(Map.of(
                 "status", "consumed",
                 "count", results.size(),
-                "results", results.stream().map(l -> Map.of(
-                        "messageId", l.getMessageId(),
-                        "messageType", l.getMessageType().name(),
-                        "status", l.getStatus().name()
-                )).toList()));
+                "remainingSize", messageService.queueSize()));
+    }
+
+    @PostMapping("/worker/on")
+    public ResponseEntity<Map<String, Object>> workerOn() {
+        messageWorker.enable();
+        return ResponseEntity.ok(Map.of("worker", "on"));
+    }
+
+    @PostMapping("/worker/off")
+    public ResponseEntity<Map<String, Object>> workerOff() {
+        messageWorker.disable();
+        return ResponseEntity.ok(Map.of("worker", "off"));
+    }
+
+    @GetMapping("/worker/status")
+    public ResponseEntity<Map<String, Object>> workerStatus() {
+        return ResponseEntity.ok(Map.of(
+                "worker", messageWorker.isEnabled() ? "on" : "off",
+                "queueSize", messageService.queueSize()));
     }
 
     @DeleteMapping("/consume/{messageId}")
