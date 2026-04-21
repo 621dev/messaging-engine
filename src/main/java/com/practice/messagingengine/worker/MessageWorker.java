@@ -3,27 +3,28 @@ package com.practice.messagingengine.worker;
 import com.practice.messagingengine.service.MessageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
 public class MessageWorker {
 
     private static final Logger log = LoggerFactory.getLogger(MessageWorker.class);
-    private static final int BATCH_SIZE = 100;
+    private static final int BATCH_SIZE = 500;
+    private static final String WORKER_KEY = "worker:enabled";
 
     private final MessageService messageService;
-    private final AtomicBoolean enabled = new AtomicBoolean(false);
+    private final StringRedisTemplate redisTemplate;
 
-    public MessageWorker(MessageService messageService) {
+    public MessageWorker(MessageService messageService, StringRedisTemplate redisTemplate) {
         this.messageService = messageService;
+        this.redisTemplate = redisTemplate;
     }
 
     @Scheduled(fixedDelay = 1000)
     public void run() {
-        if (!enabled.get()) return;
+        if (!isEnabled()) return;
         if (messageService.queueSize() == 0) return;
 
         int processed = messageService.consumeBatch(BATCH_SIZE).size();
@@ -31,16 +32,16 @@ public class MessageWorker {
     }
 
     public void enable() {
-        enabled.set(true);
+        redisTemplate.opsForValue().set(WORKER_KEY, "true");
         log.info("[Worker] 활성화");
     }
 
     public void disable() {
-        enabled.set(false);
+        redisTemplate.opsForValue().set(WORKER_KEY, "false");
         log.info("[Worker] 비활성화");
     }
 
     public boolean isEnabled() {
-        return enabled.get();
+        return "true".equals(redisTemplate.opsForValue().get(WORKER_KEY));
     }
 }
