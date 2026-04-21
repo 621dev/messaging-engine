@@ -13,6 +13,7 @@
 3. [큐 상태 확인](#3-큐-상태-확인)
 4. [메시지 처리 (consume)](#4-메시지-처리-consume)
 5. [워커 제어](#5-워커-제어)
+6. [워커 처리량 조절](#6-워커-처리량-조절)
 
 ---
 
@@ -159,7 +160,7 @@ curl -X DELETE $NGINX_URL/api/messages/consume/3ca5572d-072c-4d9c-aeb3-bfedc3602
 
 ## 5. 워커 제어
 
-워커는 1초마다 자동으로 100건씩 consume을 반복합니다.  
+워커는 1초마다 자동으로 배치 사이즈만큼 consume을 반복합니다. (기본 500건)  
 서버 기동 시 기본 **off** 상태입니다.
 
 ### `POST /api/messages/worker/on`
@@ -207,8 +208,35 @@ curl -s $NGINX_URL/api/messages/worker/status | jq .
 ```json
 {
   "worker": "on",
+  "batchSize": 500,
   "queueSize": 467240
 }
+```
+
+---
+
+## 6. 워커 처리량 조절
+
+### `POST /api/messages/worker/batch-size?size={n}`
+
+워커가 1초마다 처리하는 배치 사이즈를 변경합니다.  
+설정값은 Redis에 저장되므로 서버 재시작 후에도 유지됩니다.  
+기본값은 **500건**이며, 허용 범위는 **1 ~ 10000**입니다.
+
+```bash
+curl -X POST "$NGINX_URL/api/messages/worker/batch-size?size=1000"
+```
+
+**응답**
+
+```json
+{ "batchSize": 1000 }
+```
+
+범위를 벗어난 경우:
+
+```json
+{ "error": "size must be between 1 and 10000" }
 ```
 
 ---
