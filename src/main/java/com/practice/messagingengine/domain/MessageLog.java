@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@IdClass(MessageLogId.class)
 @Table(name = "message_log")
 public class MessageLog {
 
@@ -12,7 +11,6 @@ public class MessageLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Id
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
