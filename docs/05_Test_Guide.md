@@ -155,12 +155,21 @@ curl -s -X POST $NGINX_URL/api/messages \
 > MODIFY COLUMN message_type ENUM('SMS','LMS','KAKAO','EMAIL','TESTFAIL');
 > ```
 
-**TESTFAIL 결과 확인**
+**TESTFAIL 결과 확인** — consume 호출 후 DB에서 확인합니다.
 
 ```bash
-# MessageWorker가 3초 내 자동 소비 → FAILED로 기록됨
+# 1. 전송 후 messageId 저장
+MSG_ID=$(curl -s -X POST $NGINX_URL/api/messages \
+  -H "Content-Type: application/json" \
+  -d '{"senderId":"tester","receiver":"01099999999","content":"의도된 실패 테스트","messageType":"TESTFAIL"}' \
+  | jq -r '.messageId')
+
+# 2. consume 호출
+curl -s -X DELETE $NGINX_URL/api/messages/consume/$MSG_ID | jq .
+
+# 3. DB에서 FAILED 확인 (sent_at은 NULL이어야 정상)
 mysql -h $MYSQL_HOST -u $MYSQL_USER -p$MYSQL_PASS $MYSQL_DB \
-  -e "SELECT message_id, message_type, status FROM message_log WHERE message_type='TESTFAIL' ORDER BY created_at DESC LIMIT 5;"
+  -e "SELECT message_id, message_type, status, sent_at FROM message_log WHERE message_id='$MSG_ID';"
 ```
 
 **예상 응답**
@@ -263,6 +272,9 @@ curl -s -X DELETE $NGINX_URL/api/messages/consume/550e8400-e29b-41d4-a716-446655
 
 ### 3-5. send → status → consume 흐름 검증
 
+> **전송(POST) 시점에는 DB에 저장되지 않습니다.**  
+> Redis에 `message:{messageId}` 키로 데이터가 저장되고, consume 후 발송 결과만 DB에 기록됩니다.
+
 ```bash
 echo "=== 1. 메시지 여러 건 전송 ==="
 MSG_ID_SMS=$(curl -s -X POST $NGINX_URL/api/messages \
@@ -282,28 +294,33 @@ echo "=== 2. 큐 상태 확인 (2건 쌓여야 함) ==="
 curl -s $NGINX_URL/api/messages/status | jq .
 
 echo ""
-echo "=== 3. MySQL PENDING 확인 ==="
-mysql -h $MYSQL_HOST -u $MYSQL_USER -p$MYSQL_PASS $MYSQL_DB \
-  -e "SELECT message_id, message_type, status FROM message_log WHERE message_id IN ('$MSG_ID_SMS','$MSG_ID_FAIL');"
+echo "=== 3. Redis 데이터 확인 (DB에는 아직 없음) ==="
+redis-cli -c -h $REDIS_HOST get "message:$MSG_ID_SMS"
+redis-cli -c -h $REDIS_HOST get "message:$MSG_ID_FAIL"
 
 echo ""
-echo "=== 4. SMS 메시지만 소비 ==="
+echo "=== 4. MySQL 확인 — consume 전이므로 조회 결과 없어야 정상 ==="
+mysql -h $MYSQL_HOST -u $MYSQL_USER -p$MYSQL_PASS $MYSQL_DB \
+  -e "SELECT message_id, status FROM message_log WHERE message_id IN ('$MSG_ID_SMS','$MSG_ID_FAIL');"
+
+echo ""
+echo "=== 5. SMS 메시지만 소비 ==="
 curl -s -X DELETE $NGINX_URL/api/messages/consume/$MSG_ID_SMS | jq .
 
 echo ""
-echo "=== 5. 큐 잔량 확인 (TESTFAIL 1건 남아야 함) ==="
+echo "=== 6. 큐 잔량 확인 (TESTFAIL 1건 남아야 함) ==="
 curl -s $NGINX_URL/api/messages/status | jq .
 
 echo ""
-echo "=== 6. 전체 소비 ==="
+echo "=== 7. 전체 소비 ==="
 curl -s -X DELETE $NGINX_URL/api/messages/consume | jq .
 
 echo ""
-echo "=== 7. MySQL 최종 상태 확인 ==="
+echo "=== 8. MySQL 최종 결과 확인 ==="
 mysql -h $MYSQL_HOST -u $MYSQL_USER -p$MYSQL_PASS $MYSQL_DB \
   -e "SELECT message_id, message_type, status, sent_at FROM message_log WHERE message_id IN ('$MSG_ID_SMS','$MSG_ID_FAIL');"
-# SMS → SUCCESS / sent_at 있음
-# TESTFAIL → FAILED / sent_at NULL
+# SMS     → status=SUCCESS, sent_at 있음
+# TESTFAIL → status=FAILED,  sent_at NULL
 ```
 
 ---
@@ -798,7 +815,8 @@ curl -s -X POST $NGINX_URL/api/messages \
 | P99 응답시간 | < 500ms | > 1,000ms |
 | 에러율 | 0% | > 1% |
 | Redis queueSize 증가 | 전송 수와 일치 | 불일치 시 유실 의심 |
-| MySQL PENDING 건수 | 전송 건수와 일치 | 불일치 시 트랜잭션 오류 |
+| Redis `message:{id}` 키 존재 | 전송 후 consume 전까지 존재 | consume 후에도 남아있으면 삭제 로직 오류 |
+| MySQL 저장 시점 | consume 호출 후에만 기록 | 전송 직후 DB에 데이터가 있으면 아키텍처 오류 |
 | TESTFAIL 상태 | `status=FAILED`, `sent_at=NULL` | SUCCESS로 기록되면 실패 처리 로직 오류 |
 
 ### MySQL 데이터 정합성 체크 쿼리
