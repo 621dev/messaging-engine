@@ -32,15 +32,31 @@ public class MessageController {
     }
 
     @DeleteMapping("/consume")
-    public ResponseEntity<Map<String, Object>> consume() {
-        MessageLog log = messageService.consume();
-        if (log == null) {
+    public ResponseEntity<Map<String, Object>> consumeAll() {
+        List<MessageLog> results = messageService.consumeAll();
+        if (results.isEmpty()) {
             return ResponseEntity.ok(Map.of("status", "empty", "message", "queue is empty"));
         }
         return ResponseEntity.ok(Map.of(
                 "status", "consumed",
+                "count", results.size(),
+                "results", results.stream().map(l -> Map.of(
+                        "messageId", l.getMessageId(),
+                        "messageType", l.getMessageType().name(),
+                        "status", l.getStatus().name()
+                )).toList()));
+    }
+
+    @DeleteMapping("/consume/{messageId}")
+    public ResponseEntity<Map<String, Object>> consumeOne(@PathVariable String messageId) {
+        MessageLog log = messageService.consumeByMessageId(messageId);
+        if (log == null) {
+            return ResponseEntity.ok(Map.of("status", "not_in_queue", "messageId", messageId));
+        }
+        return ResponseEntity.ok(Map.of(
+                "status", log.getStatus().name(),
                 "messageId", log.getMessageId(),
-                "content", log.getContent() != null ? log.getContent() : "",
+                "messageType", log.getMessageType().name(),
                 "remainingSize", messageService.queueSize()));
     }
 

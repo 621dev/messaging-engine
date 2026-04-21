@@ -142,6 +142,25 @@ curl -s -X POST $NGINX_URL/api/messages \
 curl -s -X POST $NGINX_URL/api/messages \
   -H "Content-Type: application/json" \
   -d '{"senderId":"system","receiver":"test@example.com","content":"이메일 테스트","messageType":"EMAIL"}' | jq .
+
+# TESTFAIL — 항상 FAILED로 처리되는 테스트용 타입
+curl -s -X POST $NGINX_URL/api/messages \
+  -H "Content-Type: application/json" \
+  -d '{"senderId":"tester","receiver":"01099999999","content":"의도된 실패 테스트","messageType":"TESTFAIL"}' | jq .
+```
+
+> **TESTFAIL 사전 준비**: DB의 `message_type` ENUM에 값을 추가해야 합니다.
+> ```sql
+> ALTER TABLE message_log
+> MODIFY COLUMN message_type ENUM('SMS','LMS','KAKAO','EMAIL','TESTFAIL');
+> ```
+
+**TESTFAIL 결과 확인**
+
+```bash
+# MessageWorker가 3초 내 자동 소비 → FAILED로 기록됨
+mysql -h $MYSQL_HOST -u $MYSQL_USER -p$MYSQL_PASS $MYSQL_DB \
+  -e "SELECT message_id, message_type, status FROM message_log WHERE message_type='TESTFAIL' ORDER BY created_at DESC LIMIT 5;"
 ```
 
 **예상 응답**
@@ -191,59 +210,100 @@ curl -s $NGINX_URL/api/messages/status | jq .
 }
 ```
 
-### 3-3. DELETE /api/messages/consume — 메시지 소비
+### 3-3. DELETE /api/messages/consume — 큐 전체 소비
+
+> `MessageWorker` 자동 소비는 비활성화되어 있습니다. 모든 consume은 수동으로 호출해야 합니다.
 
 ```bash
-# 큐에 메시지가 있을 때
+# 큐 전체 소비
 curl -s -X DELETE $NGINX_URL/api/messages/consume | jq .
-
-# 예상 응답
-# {
-#   "status": "consumed",
-#   "messageId": "550e8400-...",
-#   "content": "SMS 테스트",
-#   "remainingSize": 0
-# }
-
-# 큐가 비어 있을 때
-curl -s -X DELETE $NGINX_URL/api/messages/consume | jq .
-# {
-#   "status": "empty",
-#   "message": "queue is empty"
-# }
 ```
 
-### 3-4. send → status → consume 흐름 검증
+**예상 응답 (메시지 있을 때)**
+```json
+{
+  "status": "consumed",
+  "count": 3,
+  "results": [
+    { "messageId": "550e8400-...", "messageType": "SMS",      "status": "SUCCESS" },
+    { "messageId": "661f9511-...", "messageType": "TESTFAIL", "status": "FAILED"  },
+    { "messageId": "772a0622-...", "messageType": "EMAIL",    "status": "SUCCESS" }
+  ]
+}
+```
+
+**예상 응답 (큐가 비어 있을 때)**
+```json
+{ "status": "empty", "message": "queue is empty" }
+```
+
+### 3-4. DELETE /api/messages/consume/{messageId} — 특정 메시지 소비
+
+큐에서 지정한 messageId만 꺼내서 발송 처리합니다. 나머지 메시지는 큐에 그대로 남습니다.
 
 ```bash
-echo "=== 1. 메시지 전송 ==="
-RESPONSE=$(curl -s -X POST $NGINX_URL/api/messages \
+# 특정 메시지 소비
+curl -s -X DELETE $NGINX_URL/api/messages/consume/550e8400-e29b-41d4-a716-446655440000 | jq .
+```
+
+**예상 응답 (큐에 존재할 때)**
+```json
+{
+  "status": "SUCCESS",
+  "messageId": "550e8400-e29b-41d4-a716-446655440000",
+  "messageType": "SMS",
+  "remainingSize": 2
+}
+```
+
+**예상 응답 (큐에 없을 때 — 이미 소비됐거나 잘못된 ID)**
+```json
+{ "status": "not_in_queue", "messageId": "550e8400-..." }
+```
+
+### 3-5. send → status → consume 흐름 검증
+
+```bash
+echo "=== 1. 메시지 여러 건 전송 ==="
+MSG_ID_SMS=$(curl -s -X POST $NGINX_URL/api/messages \
   -H "Content-Type: application/json" \
-  -d '{"senderId":"tester","receiver":"01099999999","content":"흐름 테스트","messageType":"SMS"}')
-echo $RESPONSE | jq .
-MSG_ID=$(echo $RESPONSE | jq -r '.messageId')
+  -d '{"senderId":"tester","receiver":"01099999999","content":"SMS 흐름 테스트","messageType":"SMS"}' \
+  | jq -r '.messageId')
+echo "SMS messageId: $MSG_ID_SMS"
+
+MSG_ID_FAIL=$(curl -s -X POST $NGINX_URL/api/messages \
+  -H "Content-Type: application/json" \
+  -d '{"senderId":"tester","receiver":"01099999999","content":"실패 흐름 테스트","messageType":"TESTFAIL"}' \
+  | jq -r '.messageId')
+echo "TESTFAIL messageId: $MSG_ID_FAIL"
 
 echo ""
-echo "=== 2. 큐 상태 확인 ==="
+echo "=== 2. 큐 상태 확인 (2건 쌓여야 함) ==="
 curl -s $NGINX_URL/api/messages/status | jq .
 
 echo ""
-echo "=== 3. Redis 직접 확인 ==="
-redis-cli -c -h $REDIS_HOST LLEN message_queue
-
-echo ""
-echo "=== 4. MySQL PENDING 확인 ==="
+echo "=== 3. MySQL PENDING 확인 ==="
 mysql -h $MYSQL_HOST -u $MYSQL_USER -p$MYSQL_PASS $MYSQL_DB \
-  -e "SELECT message_id, status, created_at FROM message_log WHERE message_id='$MSG_ID';"
+  -e "SELECT message_id, message_type, status FROM message_log WHERE message_id IN ('$MSG_ID_SMS','$MSG_ID_FAIL');"
 
 echo ""
-echo "=== 5. 메시지 소비 ==="
+echo "=== 4. SMS 메시지만 소비 ==="
+curl -s -X DELETE $NGINX_URL/api/messages/consume/$MSG_ID_SMS | jq .
+
+echo ""
+echo "=== 5. 큐 잔량 확인 (TESTFAIL 1건 남아야 함) ==="
+curl -s $NGINX_URL/api/messages/status | jq .
+
+echo ""
+echo "=== 6. 전체 소비 ==="
 curl -s -X DELETE $NGINX_URL/api/messages/consume | jq .
 
 echo ""
-echo "=== 6. MySQL SUCCESS 확인 ==="
+echo "=== 7. MySQL 최종 상태 확인 ==="
 mysql -h $MYSQL_HOST -u $MYSQL_USER -p$MYSQL_PASS $MYSQL_DB \
-  -e "SELECT message_id, status, sent_at FROM message_log WHERE message_id='$MSG_ID';"
+  -e "SELECT message_id, message_type, status, sent_at FROM message_log WHERE message_id IN ('$MSG_ID_SMS','$MSG_ID_FAIL');"
+# SMS → SUCCESS / sent_at 있음
+# TESTFAIL → FAILED / sent_at NULL
 ```
 
 ---
@@ -739,6 +799,7 @@ curl -s -X POST $NGINX_URL/api/messages \
 | 에러율 | 0% | > 1% |
 | Redis queueSize 증가 | 전송 수와 일치 | 불일치 시 유실 의심 |
 | MySQL PENDING 건수 | 전송 건수와 일치 | 불일치 시 트랜잭션 오류 |
+| TESTFAIL 상태 | `status=FAILED`, `sent_at=NULL` | SUCCESS로 기록되면 실패 처리 로직 오류 |
 
 ### MySQL 데이터 정합성 체크 쿼리
 

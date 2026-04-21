@@ -13,12 +13,14 @@ public class MessageSenderRouter {
     public MessageSenderRouter(SmsSender smsSender,
                                LmsSender lmsSender,
                                KakaoSender kakaoSender,
-                               EmailSender emailSender) {
+                               EmailSender emailSender,
+                               TestFailSender testFailSender) {
         this.senderMap = Map.of(
-                MessageType.SMS,   smsSender,
-                MessageType.LMS,   lmsSender,
-                MessageType.KAKAO, kakaoSender,
-                MessageType.EMAIL, emailSender
+                MessageType.SMS,      smsSender,
+                MessageType.LMS,      lmsSender,
+                MessageType.KAKAO,    kakaoSender,
+                MessageType.EMAIL,    emailSender,
+                MessageType.TESTFAIL, testFailSender
         );
     }
 

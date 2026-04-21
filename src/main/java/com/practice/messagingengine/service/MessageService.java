@@ -78,6 +78,39 @@ public class MessageService {
         return messageLogRepository.save(message);
     }
 
+    @Transactional
+    public MessageLog consumeByMessageId(String messageId) {
+        Long removed = redisTemplate.opsForList().remove(QUEUE_KEY, 1, messageId);
+        if (removed == null || removed == 0) {
+            return null;
+        }
+
+        MessageLog message = messageLogRepository.findByMessageId(messageId)
+                .orElseThrow(() -> new IllegalStateException("MessageLog not found: " + messageId));
+
+        try {
+            senderRouter.route(message.getMessageType()).send(message);
+            message.setStatus(MessageStatus.SUCCESS);
+            message.setSentAt(LocalDateTime.now());
+            log.info("[발송 완료] messageId={} type={}", messageId, message.getMessageType());
+        } catch (Exception e) {
+            message.setStatus(MessageStatus.FAILED);
+            log.error("[발송 실패] messageId={} type={} reason={}", messageId, message.getMessageType(), e.getMessage());
+        }
+
+        return messageLogRepository.save(message);
+    }
+
+    public List<MessageLog> consumeAll() {
+        List<MessageLog> results = new java.util.ArrayList<>();
+        while (queueSize() > 0) {
+            MessageLog result = consume();
+            if (result == null) break;
+            results.add(result);
+        }
+        return results;
+    }
+
     public long queueSize() {
         Long size = redisTemplate.opsForList().size(QUEUE_KEY);
         return size != null ? size : 0;
