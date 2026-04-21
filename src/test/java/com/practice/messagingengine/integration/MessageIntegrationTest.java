@@ -132,8 +132,7 @@ class MessageIntegrationTest {
             }
 
             // willReturn 체이닝으로 순서대로 반환
-            BDDMockito.BDDMyOngoingStubbing<String> stub =
-                    given(listOps.leftPop("message_queue")).willReturn(sentIds.get(0));
+            var stub = given(listOps.leftPop("message_queue")).willReturn(sentIds.get(0));
             for (int i = 1; i < sentIds.size(); i++) {
                 stub = stub.willReturn(sentIds.get(i));
             }
