@@ -32,8 +32,9 @@ public class MessageController {
     }
 
     @DeleteMapping("/consume")
-    public ResponseEntity<Map<String, Object>> consumeAll() {
-        List<MessageLog> results = messageService.consumeAll();
+    public ResponseEntity<Map<String, Object>> consumeBatch(
+            @RequestParam(defaultValue = "100") int limit) {
+        List<MessageLog> results = messageService.consumeBatch(limit);
         if (results.isEmpty()) {
             return ResponseEntity.ok(Map.of("status", "empty", "message", "queue is empty"));
         }

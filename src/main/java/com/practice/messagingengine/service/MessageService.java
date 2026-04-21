@@ -84,9 +84,9 @@ public class MessageService {
         return process(messageId);
     }
 
-    public List<MessageLog> consumeAll() {
+    public List<MessageLog> consumeBatch(int limit) {
         List<MessageLog> results = new ArrayList<>();
-        while (queueSize() > 0) {
+        for (int i = 0; i < limit; i++) {
             MessageLog result = consume();
             if (result == null) break;
             results.add(result);
