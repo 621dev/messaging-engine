@@ -28,7 +28,7 @@ public class MessageWorker {
         if (messageService.queueSize() == 0) return;
 
         int processed = messageService.consumeBatch(BATCH_SIZE).size();
-        log.info("[Worker] {}건 처리 완료, 잔여 {}건", processed, messageService.queueSize());
+        log.debug("[Worker] {}건 처리 완료, 잔여 {}건", processed, messageService.queueSize());
     }
 
     public void enable() {
