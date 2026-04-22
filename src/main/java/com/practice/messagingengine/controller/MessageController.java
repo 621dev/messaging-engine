@@ -63,7 +63,17 @@ public class MessageController {
     public ResponseEntity<Map<String, Object>> workerStatus() {
         return ResponseEntity.ok(Map.of(
                 "worker", messageWorker.isEnabled() ? "on" : "off",
+                "batchSize", messageWorker.getBatchSize(),
                 "queueSize", messageService.queueSize()));
+    }
+
+    @PostMapping("/worker/batch-size")
+    public ResponseEntity<Map<String, Object>> setBatchSize(@RequestParam int size) {
+        if (size < 1 || size > 10000) {
+            return ResponseEntity.badRequest().body(Map.of("error", "size must be between 1 and 10000"));
+        }
+        messageWorker.setBatchSize(size);
+        return ResponseEntity.ok(Map.of("batchSize", size));
     }
 
     @DeleteMapping("/consume/{messageId}")
